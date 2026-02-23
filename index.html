@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ČSÚ · Datový portál</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0f14;
+    --surface: #14171f;
+    --surface2: #1c2030;
+    --border: #252a3a;
+    --accent: #e8c547;
+    --accent2: #e85447;
+    --accent3: #47c5e8;
+    --accent4: #7c6af5;
+    --accent5: #5ce87a;
+    --text: #e8e4d8;
+    --muted: #7a8099;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(232,197,71,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(232,197,71,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none; z-index: 0;
+  }
+
+  .container { position: relative; z-index: 1; max-width: 1100px; margin: 0 auto; padding: 56px 24px 80px; }
+
+  /* HEADER */
+  header { margin-bottom: 64px; }
+  .eyebrow { font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--accent); margin-bottom: 10px; }
+  h1 {
+    font-family: 'DM Serif Display', serif;
+    font-size: clamp(44px, 8vw, 80px);
+    line-height: 0.95; color: var(--text); margin-bottom: 16px;
+  }
+  h1 em { font-style: italic; color: var(--accent); }
+  .header-desc { font-size: 12px; color: var(--muted); line-height: 1.7; max-width: 520px; }
+  .header-desc strong { color: var(--text); }
+
+  /* LIVE TICKER */
+  .ticker {
+    display: flex; gap: 24px; flex-wrap: wrap;
+    margin-top: 32px; padding: 16px 20px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+  }
+  .ticker-item { display: flex; flex-direction: column; gap: 3px; }
+  .ticker-label { font-size: 8px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); }
+  .ticker-value { font-family: 'DM Serif Display', serif; font-size: 22px; color: var(--accent); }
+  .ticker-sub { font-size: 9px; color: var(--muted); }
+  .ticker-sep { width: 1px; background: var(--border); align-self: stretch; }
+
+  /* SECTION TITLE */
+  .section-label {
+    font-size: 9px; letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 20px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  /* MODULE GRID */
+  .modules-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 2px;
+    margin-bottom: 4px;
+  }
+
+  .module-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 28px;
+    cursor: pointer;
+    text-decoration: none;
+    display: block;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .module-card::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: var(--card-accent, var(--accent));
+    transform: scaleX(0); transform-origin: left;
+    transition: transform 0.3s ease;
+  }
+  .module-card:hover { background: var(--surface2); border-color: var(--card-accent, var(--accent)); }
+  .module-card:hover::before { transform: scaleX(1); }
+
+  .module-card.ready { --card-accent: var(--accent); }
+  .module-card.ready-blue { --card-accent: var(--accent3); }
+  .module-card.soon { cursor: default; opacity: 0.55; }
+  .module-card.soon:hover { background: var(--surface); border-color: var(--border); }
+  .module-card.soon::before { display: none; }
+
+  .module-icon { font-size: 24px; margin-bottom: 16px; }
+  .module-status {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 8px; letter-spacing: 0.15em; text-transform: uppercase;
+    padding: 3px 8px; margin-bottom: 12px;
+  }
+  .module-status.live {
+    background: rgba(232,197,71,0.1); color: var(--accent); border: 1px solid rgba(232,197,71,0.3);
+  }
+  .module-status.live-blue {
+    background: rgba(71,197,232,0.1); color: var(--accent3); border: 1px solid rgba(71,197,232,0.3);
+  }
+  .module-status.upcoming {
+    background: rgba(122,128,153,0.1); color: var(--muted); border: 1px solid rgba(122,128,153,0.2);
+  }
+  .module-status .dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+
+  .module-title {
+    font-family: 'DM Serif Display', serif;
+    font-size: 24px; color: var(--text); margin-bottom: 8px; line-height: 1.1;
+  }
+  .module-desc { font-size: 11px; color: var(--muted); line-height: 1.65; margin-bottom: 20px; }
+
+  .module-kpis { display: flex; gap: 20px; flex-wrap: wrap; }
+  .kpi { }
+  .kpi-val {
+    font-family: 'DM Serif Display', serif;
+    font-size: 20px; color: var(--card-accent, var(--accent));
+  }
+  .kpi-label { font-size: 9px; color: var(--muted); letter-spacing: 0.05em; }
+
+  .module-arrow {
+    position: absolute; bottom: 24px; right: 24px;
+    font-size: 18px; color: var(--card-accent, var(--accent));
+    opacity: 0; transition: opacity 0.2s, transform 0.2s;
+  }
+  .module-card:hover .module-arrow { opacity: 1; transform: translateX(4px); }
+
+  /* MINI SPARKLINE */
+  .module-spark { margin-bottom: 20px; height: 40px; }
+  .module-spark canvas { width: 100% !important; height: 40px !important; }
+
+  /* FOOTER */
+  footer {
+    margin-top: 80px;
+    border-top: 1px solid var(--border);
+    padding-top: 20px;
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 12px;
+    font-size: 10px; color: var(--muted);
+  }
+  footer a { color: var(--muted); text-decoration: none; }
+  footer a:hover { color: var(--accent); }
+
+  @media (max-width: 600px) {
+    .modules-grid { grid-template-columns: 1fr; }
+    .ticker { gap: 16px; }
+    .ticker-sep { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div class="eyebrow">Český statistický úřad · Datový portál</div>
+    <h1>Česká<br>ekonomika<br>v <em>číslech</em></h1>
+    <p class="header-desc">
+      Interaktivní vizualizace klíčových makroekonomických dat ČR.
+      Data jsou <strong>průběžně aktualizována</strong> z veřejných zdrojů ČSÚ a ČSSZ.
+      Moduly jsou propojeny — inflátor aplikovaný napříč ukazateli umožňuje
+      srovnávat hodnoty v reálných cenách.
+    </p>
+
+    <div class="ticker">
+      <div class="ticker-item">
+        <span class="ticker-label">Inflace 2025</span>
+        <span class="ticker-value" id="t-inflace">2,5 %</span>
+        <span class="ticker-sub">průměrná roční míra · ČSÚ</span>
+      </div>
+      <div class="ticker-sep"></div>
+      <div class="ticker-item">
+        <span class="ticker-label">Průměrná mzda 2024</span>
+        <span class="ticker-value" id="t-mzda">46 165 Kč</span>
+        <span class="ticker-sub">hrubá měsíční · ČSÚ</span>
+      </div>
+      <div class="ticker-sep"></div>
+      <div class="ticker-item">
+        <span class="ticker-label">Průměrný důchod 2024</span>
+        <span class="ticker-value" id="t-duchod">20 736 Kč</span>
+        <span class="ticker-sub">starobní · ČSSZ prosinec</span>
+      </div>
+      <div class="ticker-sep"></div>
+      <div class="ticker-item">
+        <span class="ticker-label">Náhradový poměr</span>
+        <span class="ticker-value" id="t-nahrada">65,1 %</span>
+        <span class="ticker-sub">důchod / čistá mzda · 2024</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="section-label">Dostupné moduly</div>
+
+  <div class="modules-grid">
+
+    <!-- INFLACE -->
+    <a href="inflace.html" class="module-card ready">
+      <div class="module-icon">📈</div>
+      <div class="module-status live"><span class="dot"></span>Aktivní</div>
+      <div class="module-title">Inflace</div>
+      <p class="module-desc">Průměrná roční míra inflace 1990–2025. Historický kontext, kumulace, inflátor a deflátor pro přepočet hodnot v čase.</p>
+      <div class="module-spark"><canvas id="spark-inflace"></canvas></div>
+      <div class="module-kpis">
+        <div class="kpi"><div class="kpi-val">2,5 %</div><div class="kpi-label">2025</div></div>
+        <div class="kpi"><div class="kpi-val">56,6 %</div><div class="kpi-label">maximum 1991</div></div>
+        <div class="kpi"><div class="kpi-val">+1 040 %</div><div class="kpi-label">kumulace 1990–2025</div></div>
+      </div>
+      <span class="module-arrow">→</span>
+    </a>
+
+    <!-- MZDY -->
+    <a href="mzdy.html" class="module-card ready-blue">
+      <div class="module-icon">💼</div>
+      <div class="module-status live-blue"><span class="dot"></span>Aktivní</div>
+      <div class="module-title">Mzdy &amp; důchody</div>
+      <p class="module-desc">Průměrná hrubá a čistá mzda, průměrný starobní důchod a náhradový poměr 1993–2024. Nominální i reálné hodnoty přepočtené inflátorem.</p>
+      <div class="module-spark"><canvas id="spark-mzdy"></canvas></div>
+      <div class="module-kpis">
+        <div class="kpi"><div class="kpi-val" style="color:var(--accent3)">46 165 Kč</div><div class="kpi-label">hrubá mzda 2024</div></div>
+        <div class="kpi"><div class="kpi-val" style="color:var(--accent3)">20 736 Kč</div><div class="kpi-label">důchod 2024</div></div>
+        <div class="kpi"><div class="kpi-val" style="color:var(--accent3)">65,1 %</div><div class="kpi-label">náhradový poměr (čistá)</div></div>
+      </div>
+      <span class="module-arrow" style="color:var(--accent3)">→</span>
+    </a>
+
+    <!-- PŘIPRAVOVANÉ MODULY -->
+    <div class="module-card soon">
+      <div class="module-icon">📊</div>
+      <div class="module-status upcoming"><span class="dot"></span>Připravuje se</div>
+      <div class="module-title">HDP</div>
+      <p class="module-desc">Hrubý domácí produkt v běžných i stálých cenách, meziroční růst, HDP na obyvatele a srovnání s EU.</p>
+      <div class="module-kpis">
+        <div class="kpi"><div class="kpi-val" style="color:var(--muted)">—</div><div class="kpi-label">brzy</div></div>
+      </div>
+    </div>
+
+    <div class="module-card soon">
+      <div class="module-icon">👥</div>
+      <div class="module-status upcoming"><span class="dot"></span>Připravuje se</div>
+      <div class="module-title">Trh práce</div>
+      <p class="module-desc">Míra nezaměstnanosti, počet pracovních míst, ekonomická aktivita obyvatelstva a vývoj od roku 1993.</p>
+      <div class="module-kpis">
+        <div class="kpi"><div class="kpi-val" style="color:var(--muted)">—</div><div class="kpi-label">brzy</div></div>
+      </div>
+    </div>
+
+    <div class="module-card soon">
+      <div class="module-icon">🏛️</div>
+      <div class="module-status upcoming"><span class="dot"></span>Připravuje se</div>
+      <div class="module-title">Veřejné finance</div>
+      <p class="module-desc">Státní rozpočet, schodek a dluh veřejných financí jako procento HDP v historickém srovnání.</p>
+      <div class="module-kpis">
+        <div class="kpi"><div class="kpi-val" style="color:var(--muted)">—</div><div class="kpi-label">brzy</div></div>
+      </div>
+    </div>
+
+    <div class="module-card soon">
+      <div class="module-icon">🏘️</div>
+      <div class="module-status upcoming"><span class="dot"></span>Připravuje se</div>
+      <div class="module-title">Demografie</div>
+      <p class="module-desc">Vývoj počtu obyvatel, porodnost, úmrtnost, přirozený přírůstek a migrace od roku 1990.</p>
+      <div class="module-kpis">
+        <div class="kpi"><div class="kpi-val" style="color:var(--muted)">—</div><div class="kpi-label">brzy</div></div>
+      </div>
+    </div>
+
+  </div>
+
+  <footer>
+    <span>Zdroj dat: <a href="https://data.csu.gov.cz" target="_blank">ČSÚ DataStat</a> · <a href="https://www.cssz.cz" target="_blank">ČSSZ</a> · <a href="https://www.cnb.cz" target="_blank">ČNB ARAD</a></span>
+    <span id="footer-update"></span>
+  </footer>
+
+</div>
+
+<script>
+// Sparkline data
+const INFLACE_DATA = [9.7,56.6,11.1,20.8,10.0,9.1,8.8,8.5,10.7,2.1,3.9,4.7,1.8,0.1,2.8,1.9,2.5,2.8,6.3,1.0,1.5,1.9,3.3,1.4,0.4,0.3,0.7,2.5,2.1,2.8,3.2,3.8,15.1,10.7,2.4,2.5];
+const MZDA_DATA = [5817,6894,8172,9825,10802,11693,12797,13219,14378,15524,16430,17466,18344,19546,20957,22691,23344,23864,24455,25101,25128,25686,26467,27764,29504,32040,34125,35441,37839,40353,43685,46165];
+
+function sparkline(id, data, color, fill) {
+  const cv = document.getElementById(id);
+  if (!cv) return;
+  new Chart(cv, {
+    type: 'line',
+    data: {
+      labels: data.map((_,i)=>i),
+      datasets: [{
+        data,
+        borderColor: color,
+        borderWidth: 1.5,
+        pointRadius: 0,
+        tension: 0.3,
+        fill: true,
+        backgroundColor: fill,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: { x: { display: false }, y: { display: false } },
+      animation: { duration: 600 }
+    }
+  });
+}
+
+sparkline('spark-inflace', INFLACE_DATA, 'rgba(232,197,71,0.8)', 'rgba(232,197,71,0.08)');
+sparkline('spark-mzdy', MZDA_DATA, 'rgba(71,197,232,0.8)', 'rgba(71,197,232,0.08)');
+
+// Live fetch of latest inflation from ČSÚ to update ticker
+async function updateTicker() {
+  try {
+    const r = await fetch('https://data.csu.gov.cz/api/dotaz/v1/data/vybery/CRUHVD1T2?format=CSV',
+      { signal: AbortSignal.timeout(5000) });
+    if (!r.ok) return;
+    const lines = (await r.text()).trim().split('\n');
+    let latest = null;
+    for (let i = 1; i < lines.length; i++) {
+      const c = lines[i].split(/[,;]/);
+      const y = parseInt(c[0]?.replace(/"/g,''));
+      const v = parseFloat(c[1]?.replace(/"/g,'').replace(',','.'));
+      if (!isNaN(y) && !isNaN(v) && y > 1992) latest = { y, v };
+    }
+    if (latest) {
+      document.getElementById('t-inflace').textContent =
+        latest.v.toFixed(1).replace('.', ',') + ' %';
+    }
+  } catch {}
+}
+updateTicker();
+
+document.getElementById('footer-update').textContent =
+  'Aktualizováno: ' + new Date().toLocaleDateString('cs-CZ', { day: 'numeric', month: 'long', year: 'numeric' });
+</script>
+</body>
+</html>

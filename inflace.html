@@ -1,0 +1,1180 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ČSÚ · Vývoj inflace</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0f14;
+    --surface: #14171f;
+    --surface2: #1c2030;
+    --border: #252a3a;
+    --accent: #e8c547;
+    --accent2: #e85447;
+    --accent3: #47c5e8;
+    --text: #e8e4d8;
+    --muted: #7a8099;
+    --positive: #5ce87a;
+    --negative: #e85447;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(232,197,71,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(232,197,71,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .container { position: relative; z-index: 1; max-width: 1100px; margin: 0 auto; padding: 48px 24px; }
+
+  header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 48px; gap: 24px; flex-wrap: wrap; }
+  .eyebrow { font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
+  h1 { font-family: 'DM Serif Display', serif; font-size: clamp(36px, 6vw, 64px); line-height: 1.0; color: var(--text); margin-bottom: 12px; }
+  h1 em { font-style: italic; color: var(--accent); }
+  .subtitle { font-size: 12px; color: var(--muted); letter-spacing: 0.05em; }
+
+  .tabs { display: flex; gap: 2px; margin-bottom: 28px; border-bottom: 1px solid var(--border); }
+  .tab {
+    background: transparent; border: none; border-bottom: 2px solid transparent;
+    color: var(--muted); padding: 10px 20px; font-family: 'DM Mono', monospace;
+    font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    cursor: pointer; margin-bottom: -1px; transition: all 0.15s;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 32px; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); padding: 20px; position: relative; overflow: hidden; }
+  .stat-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--accent); transform: scaleX(0); transform-origin: left; transition: transform 0.4s ease; }
+  .stat-card.loaded::before { transform: scaleX(1); }
+  .stat-label { font-size: 9px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  .stat-value { font-family: 'DM Serif Display', serif; font-size: 32px; line-height: 1; color: var(--text); }
+  .stat-value.positive { color: var(--positive); }
+  .stat-value.negative { color: var(--negative); }
+  .stat-value.highlight { color: var(--accent); }
+  .stat-sub { font-size: 10px; color: var(--muted); margin-top: 6px; }
+
+  .data-note {
+    font-size: 10px; color: var(--muted); background: var(--surface2);
+    border: 1px solid var(--border); border-left: 2px solid var(--accent3);
+    padding: 8px 14px; margin-bottom: 20px; line-height: 1.6;
+  }
+  .data-note strong { color: var(--accent3); }
+
+  .controls { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+  .controls-label { font-size: 9px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); margin-right: 4px; }
+  .btn { background: transparent; border: 1px solid var(--border); color: var(--muted); padding: 6px 14px; font-family: 'DM Mono', monospace; font-size: 11px; cursor: pointer; transition: all 0.15s; }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.active { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 500; }
+
+  .chart-wrapper { background: var(--surface); border: 1px solid var(--border); padding: 28px; margin-bottom: 24px; }
+  .chart-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
+  .chart-title { font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); }
+  .chart-legend { display: flex; gap: 14px; font-size: 10px; color: var(--muted); align-items: center; flex-wrap: wrap; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+
+  .loading { display: flex; align-items: center; justify-content: center; height: 280px; flex-direction: column; gap: 16px; color: var(--muted); font-size: 12px; }
+  .spinner { width: 28px; height: 28px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .table-section { background: var(--surface); border: 1px solid var(--border); overflow: hidden; }
+  .table-header { padding: 14px 24px; border-bottom: 1px solid var(--border); font-size: 9px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); }
+  .table-scroll { overflow-x: auto; max-height: 340px; overflow-y: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  thead tr { background: var(--surface2); position: sticky; top: 0; }
+  th { text-align: left; padding: 10px 16px; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 400; border-bottom: 1px solid var(--border); }
+  td { padding: 9px 16px; border-bottom: 1px solid rgba(37,42,58,0.5); color: var(--text); font-variant-numeric: tabular-nums; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(232,197,71,0.03); }
+  .val-up { color: var(--negative); }
+  .val-down { color: var(--positive); }
+  .bar-cell { display: flex; align-items: center; gap: 8px; }
+  .bar-bg { flex: 1; height: 4px; background: var(--border); min-width: 50px; }
+  .bar-fill { height: 4px; }
+  .row-peak td { color: var(--accent); }
+  .row-est td:first-child::after { content: '*'; color: var(--accent3); font-size: 9px; margin-left: 2px; }
+
+  /* KUMULACE */
+  .kumu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
+  @media (max-width: 680px) { .kumu-grid { grid-template-columns: 1fr; } }
+
+  .kumu-card { background: var(--surface); border: 1px solid var(--border); padding: 24px; }
+  .kumu-card h3 { font-family: 'DM Serif Display', serif; font-size: 20px; color: var(--text); margin-bottom: 4px; }
+  .kumu-desc { font-size: 10px; color: var(--muted); margin-bottom: 20px; line-height: 1.5; }
+
+  .input-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .input-label { font-size: 10px; color: var(--muted); min-width: 76px; }
+  input[type="number"] {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); padding: 8px 12px;
+    font-family: 'DM Mono', monospace; font-size: 12px;
+    width: 110px; outline: none; transition: border-color 0.2s;
+  }
+  input[type="number"]:focus { border-color: var(--accent); }
+
+  .calc-btn {
+    margin-top: 6px;
+    background: var(--accent); border: none; color: var(--bg);
+    padding: 9px 22px; font-family: 'DM Mono', monospace;
+    font-size: 11px; font-weight: 500; cursor: pointer; letter-spacing: 0.08em;
+    transition: opacity 0.15s;
+  }
+  .calc-btn:hover { opacity: 0.85; }
+
+  .kumu-result { margin-top: 18px; padding: 16px; background: var(--surface2); border: 1px solid var(--border); }
+  .kumu-result-label { font-size: 9px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+  .kumu-result-value { font-family: 'DM Serif Display', serif; font-size: 44px; color: var(--accent); line-height: 1; }
+  .kumu-result-detail { font-size: 11px; color: var(--muted); margin-top: 10px; line-height: 1.7; }
+  .kumu-result-detail strong { color: var(--text); }
+
+  .err { color: var(--negative); font-size: 11px; margin-top: 10px; }
+
+  footer { margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--border); font-size: 10px; color: var(--muted); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+
+  @media (max-width: 600px) { h1 { font-size: 36px; } .stats-row { grid-template-columns: 1fr 1fr; } }
+
+  /* ── HISTORICKÁ KARTA ── */
+  .hist-intro {
+    background: var(--surface); border: 1px solid var(--border);
+    border-left: 3px solid var(--muted);
+    padding: 20px 24px; margin-bottom: 24px;
+  }
+  .hist-intro p { font-size: 12px; color: var(--muted); line-height: 1.7; }
+  .hist-intro strong { color: var(--text); }
+
+  .hist-cards {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 14px;
+    margin-top: 0;
+  }
+
+  .hist-card {
+    background: var(--surface); border: 1px solid var(--border);
+    padding: 22px; display: flex; gap: 16px; align-items: flex-start;
+  }
+  .hist-card-why   { border-left: 3px solid var(--negative); }
+  .hist-card-source { border-left: 3px solid var(--accent3); }
+  .hist-card-reform { border-left: 3px solid var(--accent); }
+  .hist-card-reality { border-left: 3px solid var(--positive); }
+
+  .hist-card-icon {
+    font-size: 20px; line-height: 1; flex-shrink: 0;
+    width: 32px; text-align: center; padding-top: 2px;
+  }
+  .hist-card-body p { font-size: 13px; color: var(--muted); line-height: 1.75; }
+  .hist-card-body strong { color: var(--text); }
+  .hist-card-title {
+    font-size: 13px; font-weight: 500; color: var(--text);
+    letter-spacing: 0.03em; margin-bottom: 10px;
+  }
+
+  /* Tabulka odhadů */
+  .hist-est-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-left: 3px solid #a78bfa;
+    margin-top: 0;
+  }
+  .hist-est-header {
+    padding: 20px 24px 0 24px;
+  }
+  .hist-est-header .hist-card-icon { font-size: 20px; display: inline; margin-right: 10px; }
+  .hist-est-header .hist-card-title { display: inline; font-size: 13px; font-weight: 500; color: var(--text); letter-spacing: 0.03em; }
+  .hist-est-intro {
+    font-size: 13px; color: var(--muted); line-height: 1.7;
+    padding: 12px 24px 16px 24px;
+  }
+  .hist-est-intro strong { color: var(--text); }
+
+  .est-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .est-table thead tr { background: var(--surface2); }
+  .est-table th {
+    text-align: left; padding: 9px 16px;
+    font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--muted); font-weight: 400; border-bottom: 1px solid var(--border);
+  }
+  .est-table td {
+    padding: 11px 16px; border-bottom: 1px solid rgba(37,42,58,0.5);
+    vertical-align: top; line-height: 1.55;
+  }
+  .est-table tr:last-child td { border-bottom: none; }
+  .est-table tr:hover td { background: rgba(167,139,250,0.04); }
+  .est-period { color: var(--text); font-weight: 500; white-space: nowrap; }
+  .est-official { color: var(--accent3); font-variant-numeric: tabular-nums; }
+  .est-real { color: #a78bfa; font-variant-numeric: tabular-nums; font-weight: 500; }
+  .est-reason { color: var(--muted); font-size: 11px; }
+  .est-disclaimer {
+    font-size: 10px; color: var(--muted); padding: 12px 24px 20px;
+    border-top: 1px solid var(--border); line-height: 1.6; margin-top: 0;
+  }
+  .est-disclaimer strong { color: #a78bfa; }
+
+  /* ── INFLÁTOR / DEFLÁTOR ── */
+  .defl-top {
+    display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap;
+    margin-bottom: 24px;
+    background: var(--surface); border: 1px solid var(--border);
+    padding: 20px 24px;
+  }
+  .defl-input-group { display: flex; flex-direction: column; gap: 6px; }
+  .defl-input-label { font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+  .defl-input {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); font-family: 'DM Mono', monospace; font-size: 20px;
+    padding: 8px 14px; width: 110px; text-align: center;
+    outline: none; transition: border-color 0.15s;
+  }
+  .defl-input:focus { border-color: var(--accent); }
+  .defl-desc {
+    font-size: 12px; color: var(--muted); line-height: 1.65; flex: 1; min-width: 220px;
+  }
+  .defl-desc strong { color: var(--text); }
+
+  .defl-table-wrap { overflow-x: auto; }
+  .defl-table {
+    width: 100%; border-collapse: collapse; font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .defl-table thead tr { background: var(--surface2); }
+  .defl-table th {
+    text-align: left; padding: 9px 16px;
+    font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--muted); font-weight: 400; border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .defl-table td {
+    padding: 9px 16px; border-bottom: 1px solid rgba(37,42,58,0.45);
+    white-space: nowrap;
+  }
+  .defl-table tr:hover td { background: rgba(232,197,71,0.03); }
+  .defl-table tr.defl-base td {
+    background: rgba(232,197,71,0.07);
+    border-left: 2px solid var(--accent);
+  }
+  .defl-table tr.defl-base td.defl-coeff { color: var(--accent); font-weight: 500; }
+  .defl-year { color: var(--muted); }
+  .defl-rate { color: var(--accent3); }
+  .defl-coeff { color: var(--text); }
+  .defl-bar-cell { width: 180px; }
+  .defl-bar-wrap { display: flex; align-items: center; gap: 8px; }
+  .defl-bar-bg { flex: 1; height: 5px; background: rgba(37,42,58,0.8); position: relative; }
+  .defl-bar-fill { height: 100%; background: var(--accent); transition: width 0.2s; }
+  .defl-bar-fill.over { background: var(--negative); }
+  .defl-bar-fill.under { background: var(--accent3); }
+  .defl-coeff-num { min-width: 52px; text-align: right; font-size: 12px; }
+  .defl-example { font-size: 11px; color: var(--muted); }
+  .defl-note {
+    font-size: 10px; color: var(--muted); margin-top: 16px;
+    border-top: 1px solid var(--border); padding-top: 12px; line-height: 1.6;
+  }
+  .defl-note strong { color: var(--muted); }
+
+  .defl-actions { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+  .btn-download {
+    background: transparent; border: 1px solid var(--border);
+    color: var(--muted); font-family: 'DM Mono', monospace;
+    font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 8px 16px; cursor: pointer; display: flex; align-items: center; gap: 8px;
+    transition: all 0.15s;
+  }
+  .btn-download:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-download svg { flex-shrink: 0; }
+
+  .portal-nav { display: flex; align-items: center; gap: 16px; margin-bottom: 36px; flex-wrap: wrap; }
+  .portal-nav-back { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); text-decoration: none; display: flex; align-items: center; gap: 6px; transition: color 0.15s; }
+  .portal-nav-back:hover { color: var(--accent); }
+  .portal-nav-sep { color: var(--border); }
+  .portal-nav-current { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <nav class="portal-nav">
+    <a href="index.html" class="portal-nav-back">← Portál</a>
+    <span class="portal-nav-sep">/</span>
+    <span class="portal-nav-current">Inflace</span>
+  </nav>
+
+  <header>
+    <div>
+      <div class="eyebrow">Český statistický úřad · DataStat API</div>
+      <h1>Vývoj<br><em>inflace</em></h1>
+      <div class="subtitle">Průměrná roční míra inflace · Česká republika (+ ČSFR 1990–1992)</div>
+    </div>
+  </header>
+
+  <div class="stats-row">
+    <div class="stat-card" id="card-latest"><div class="stat-label">Poslední rok</div><div class="stat-value" id="val-latest">—</div><div class="stat-sub" id="sub-latest">načítám…</div></div>
+    <div class="stat-card" id="card-max"><div class="stat-label">Historické maximum</div><div class="stat-value negative" id="val-max">—</div><div class="stat-sub" id="sub-max">načítám…</div></div>
+    <div class="stat-card" id="card-min"><div class="stat-label">Historické minimum</div><div class="stat-value positive" id="val-min">—</div><div class="stat-sub" id="sub-min">načítám…</div></div>
+    <div class="stat-card" id="card-kumu"><div class="stat-label">Kumulace 1990–dnes</div><div class="stat-value highlight" id="val-kumu">—</div><div class="stat-sub" id="sub-kumu">celkový nárůst cen</div></div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('rocni',this)">Roční inflace</button>
+    <button class="tab" onclick="switchTab('kumulace',this)">Kumulovaná inflace</button>
+    <button class="tab" onclick="switchTab('historicka',this)">Historická inflace</button>
+    <button class="tab" onclick="switchTab('deflator',this)">Inflátor / deflátor</button>
+  </div>
+
+  <!-- ═══ PANEL: ROČNÍ ═══ -->
+  <div class="panel active" id="panel-rocni">
+
+    <div class="data-note">
+      <strong>Poznámka k datům:</strong> Roky 1990–1992 jsou data za ČSFR (českou část), čerpána z historických publikací ČSÚ a OECD.
+      Kontinuální řada ČSÚ za samostatnou ČR začíná rokem 1993. Starší roky jsou v grafu i tabulce označeny <strong>*</strong> a zobrazeny průhledněji.
+    </div>
+
+    <div class="controls">
+      <span class="controls-label">Zobrazit:</span>
+      <button class="btn active" id="btn-all" onclick="setRange('all',this)">Vše (1990–)</button>
+      <button class="btn" onclick="setRange(20,this)">20 let</button>
+      <button class="btn" onclick="setRange(10,this)">10 let</button>
+      <button class="btn" onclick="setRange(5,this)">5 let</button>
+    </div>
+
+    <div class="chart-wrapper">
+      <div class="chart-header">
+        <div class="chart-title">Průměrná roční míra inflace (%)</div>
+        <div class="chart-legend">
+          <span><span class="legend-dot" style="background:#e85447"></span>&gt;10 %</span>
+          <span><span class="legend-dot" style="background:#e8c547"></span>5–10 %</span>
+          <span><span class="legend-dot" style="background:rgba(232,197,71,0.4)"></span>&lt;5 %</span>
+          <span style="display:flex;align-items:center;gap:4px">
+            <svg width="18" height="6"><line x1="0" y1="3" x2="18" y2="3" stroke="#47c5e8" stroke-width="1.5" stroke-dasharray="4,3"/></svg>průměr
+          </span>
+        </div>
+      </div>
+      <div id="loading1" class="loading"><div class="spinner"></div><span>Načítám data…</span></div>
+      <canvas id="chartRocni" style="display:none"></canvas>
+    </div>
+
+    <div class="table-section">
+      <div class="table-header">Detailní přehled po letech &nbsp;<span style="color:var(--accent3)">* = data ČSFR / ČSÚ historické publikace</span></div>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Rok</th><th>Inflace (%)</th><th>Meziroč. změna (p.b.)</th><th>Vizualizace</th></tr></thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ═══ PANEL: KUMULACE ═══ -->
+  <div class="panel" id="panel-kumulace">
+
+    <div class="kumu-grid">
+
+      <div class="kumu-card">
+        <h3>Kumulace od začátku</h3>
+        <div class="kumu-desc">Celkový nárůst cen od roku 1990. Graf ukazuje, o kolik % jsou ceny vyšší oproti výchozímu roku.</div>
+        <canvas id="chartKumu" height="220"></canvas>
+      </div>
+
+      <div class="kumu-card">
+        <h3>Vlastní kalkulačka</h3>
+        <div class="kumu-desc">Zadej výchozí a cílový rok — vypočítám celkovou kumulovanou inflaci za zvolené období.</div>
+
+        <div class="input-row">
+          <span class="input-label">Od roku:</span>
+          <input type="number" id="fromYear" value="2000" />
+        </div>
+        <div class="input-row">
+          <span class="input-label">Do roku:</span>
+          <input type="number" id="toYear" value="2024" />
+        </div>
+        <button class="calc-btn" onclick="calcKumu()">Vypočítat</button>
+        <div class="err" id="kumuErr" style="display:none"></div>
+
+        <div class="kumu-result" id="kumuResult" style="display:none">
+          <div class="kumu-result-label">Kumulovaná inflace</div>
+          <div class="kumu-result-value" id="kumuVal">—</div>
+          <div class="kumu-result-detail" id="kumuDetail"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="table-section">
+      <div class="table-header">Kumulovaná inflace od roku <span id="kumuBaseLabel">1990</span> (aktualizuje se po výpočtu)</div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Rok</th>
+              <th>Roční inflace (%)</th>
+              <th>Kumulace od <span class="kbl">1990</span> (%)</th>
+              <th>100 Kč z vých. roku → hodnota</th>
+            </tr>
+          </thead>
+          <tbody id="kumuTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+
+  <!-- ═══ PANEL: HISTORICKÁ INFLACE ═══ -->
+  <div class="panel" id="panel-historicka">
+
+    <div class="hist-intro">
+      <div class="hist-intro-text">
+        <div class="eyebrow" style="margin-bottom:6px">Kontext · 1948–1989</div>
+        <p>Níže zobrazený graf pokrývá celé období od roku 1948 do dnes. Pro roky <strong>1990–2025</strong> jsou použita standardní data ČSÚ (průměrná roční míra inflace). Pro období <strong>1948–1989</strong> nelze uvést srovnatelná čísla — důvody jsou vysvětleny v přiloženém přehledu.</p>
+      </div>
+    </div>
+
+    <!-- Graf s šedou zónou -->
+    <div class="chart-wrapper" style="margin-bottom:24px">
+      <div class="chart-header">
+        <div class="chart-title">Inflace v kontextu: 1948 až dnes</div>
+        <div class="chart-legend">
+          <span><span class="legend-dot" style="background:rgba(122,128,153,0.35)"></span>1948–1989 (data nedostupná, viz níže)</span>
+          <span><span class="legend-dot" style="background:#e8c547"></span>1990–2025 (ČSÚ)</span>
+        </div>
+      </div>
+      <canvas id="chartHistoricka"></canvas>
+    </div>
+
+    <!-- Vysvětlující karty -->
+    <div class="hist-cards">
+
+      <div class="hist-card hist-card-why">
+        <div class="hist-card-icon">⚠</div>
+        <div class="hist-card-body">
+          <div class="hist-card-title">Proč data z let 1948–1989 nejsou srovnatelná</div>
+          <p>V centrálně plánované ekonomice ČSSR byly ceny <strong>administrativně regulovány státem</strong> — nevznikaly na trhu. Nedostatek zboží se neprojevoval zdražením, ale <strong>frontami, přídělovými lístky a černým trhem</strong>. Oficiálně vykazovaná „inflace" proto neodráží skutečné znehodnocení kupní síly, ale pouze změny v úředně schválených cenových hladinách.</p>
+          <p style="margin-top:8px">Seriózní ekonomická historiografie proto data ČSSR z tohoto období buď nezveřejňuje, nebo je uvádí s výrazným upozorněním na jejich omezenou vypovídací hodnotu.</p>
+        </div>
+      </div>
+
+      <div class="hist-card hist-card-source">
+        <div class="hist-card-icon">📚</div>
+        <div class="hist-card-body">
+          <div class="hist-card-title">Co existuje a kde to najít</div>
+          <p>ČSÚ vydal v roce 1985 <strong>Historickou statistickou ročenku ČSSR</strong> — unikátní publikaci s časovými řadami od roku 1918 do 1983, včetně indexů maloobchodních cen. Ročenka <strong>není dostupná online</strong>, fyzicky ji lze studovat v knihovně ČSÚ v Praze. Pokrývá indexy v letech 1953–1965 z úředních ceníků, od 1966 terénním šetřením.</p>
+          <p style="margin-top:8px">Mezinárodní databáze (World Bank, OECD, IMF) pro Československo <strong>před rokem 1991 data nemají</strong> — jejich řady začínají až po přechodu na tržní ekonomiku.</p>
+        </div>
+      </div>
+
+      <div class="hist-card hist-card-reform">
+        <div class="hist-card-icon">💱</div>
+        <div class="hist-card-body">
+          <div class="hist-card-title">Měnová reforma 1953 a další zlomy</div>
+          <p>Srovnatelnost dat před a po roce 1953 je prakticky nulová: komunistická měnová reforma v červnu 1953 provedla <strong>nucený přepočet starých korun na nové</strong> — pro hotovost v poměru 5:1, pro vkladní knížky až 50:1. Střadatelé přišli o velkou část úspor.</p>
+          <p style="margin-top:8px">Dalším zlomem je rok 1967, kdy ČSSR přešla na <strong>terénní šetření cen</strong> (do té doby se vycházelo z úředních ceníků) — ani v rámci socialistického období tedy nejde o jedinou konzistentní metodiku.</p>
+        </div>
+      </div>
+
+      <div class="hist-card hist-card-reality">
+        <div class="hist-card-icon">🔍</div>
+        <div class="hist-card-body">
+          <div class="hist-card-title">Jaká byla realita</div>
+          <p>Ekonomičtí historici odhadují, že <strong>skutečné znehodnocení koruny</strong> v období normalizace (1970–1989) bylo výrazně vyšší, než ukazují oficiální čísla — státní statistika podhodnocovala inflaci ze systémových důvodů. Nedostatek spotřebního zboží a jeho nízká kvalita znamenaly de facto inflaci skrytou v podobě <strong>potlačené poptávky</strong>.</p>
+          <p style="margin-top:8px">Po sametové revoluci a liberalizaci cen v lednu 1991 se tato potlačená inflace projevila jednorázovým skokem na <strong>56,6 %</strong> — šlo z velké části o „dohnání" let předchozích.</p>
+        </div>
+      </div>
+
+
+      <!-- NOVÁ KARTA: Odhady po úsecích -->
+      <div class="hist-est-card">
+        <div class="hist-est-header">
+          <span class="hist-card-icon">📊</span>
+          <span class="hist-card-title">Oficiální data a argumentovaný odhad reálné inflace: 1948–1989</span>
+        </div>
+        <div class="hist-est-intro">
+          Přehled vychází z <strong>akademické literatury</strong> — zejména World Bank Working Paper (Drabek &amp; Brada, 1993), IMF Working Paper (1992) a studie o potlačené inflaci v ČSSR (Chalupecký, 2015). Československo bylo v rámci východního bloku <strong>relativně konzervativní ekonomikou</strong> — rozsah potlačené inflace byl menší než v Polsku, Maďarsku nebo SSSR, ale systémové podhodnocení existovalo ve všech fázích.
+        </div>
+        <div style="overflow-x:auto">
+        <table class="est-table">
+          <thead>
+            <tr>
+              <th>Období</th>
+              <th>Kontext</th>
+              <th>Oficální index<br>maloobch. cen</th>
+              <th>Odhadovaná<br>reálná inflace</th>
+              <th>Důvody rozdílu</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="est-period">1948–1952</td>
+              <td class="est-reason">Přechod na centrální plánování, znárodňování, první pětiletka. Masivní přesun zdrojů do těžkého průmyslu.</td>
+              <td class="est-official">~3–5 % ročně<br><span style="font-size:10px">(dle ceníků)</span></td>
+              <td class="est-real">6–12 % ročně</td>
+              <td class="est-reason">Narůstající nedostatek spotřebního zboží, černý trh, potlačená poptávka. Ceny průmyslových vstupů rostly skrytě. Nadměrná emise peněz bez odpovídající nabídky zboží.</td>
+            </tr>
+            <tr>
+              <td class="est-period">1953</td>
+              <td class="est-reason">Měnová reforma — nucená výměna starých korun za nové.</td>
+              <td class="est-official">—<br><span style="font-size:10px">(nesrovnatelné)</span></td>
+              <td class="est-real">jednorázová<br>ztráta úspor<br>20–80 %</td>
+              <td class="est-reason">Pro hotovost přepočet 5:1, pro větší vkladní knížky až 50:1. Reforma de facto zrušila velkou část peněžní zásoby — jde o největší jednorázové znehodnocení koruny ve 20. století.</td>
+            </tr>
+            <tr>
+              <td class="est-period">1954–1965</td>
+              <td class="est-reason">Stabilizace po reformě. Ceny zjišťovány pouze z úředních ceníků, terénní šetření neexistovalo.</td>
+              <td class="est-official">~1–2 % ročně<br><span style="font-size:10px">(ceníky)</span></td>
+              <td class="est-real">3–5 % ročně</td>
+              <td class="est-reason">Metodika vycházela výhradně z úředně schválených cen — reálné cenové tlaky (náhradní zboží, nižší kvalita za stejnou cenu, nedostatek) nebyly zachyceny. Zboží bylo „levné", ale nedostatkové.</td>
+            </tr>
+            <tr>
+              <td class="est-period">1966–1969</td>
+              <td class="est-reason">Ekonomická reforma, Pražské jaro, částečné tržní uvolnění. Poprvé terénní šetření cen.</td>
+              <td class="est-official">~1–3 % ročně<br><span style="font-size:10px">(terénní šetření od 1967)</span></td>
+              <td class="est-real">3–6 % ročně</td>
+              <td class="est-reason">Přechod na terénní šetření zachytil část dříve neviditelných cenových pohybů. Uvolnění ekonomiky odhalilo potlačenou poptávku. Reformní tlaky zvyšovaly cenové napětí, které bylo politicky brzděno.</td>
+            </tr>
+            <tr>
+              <td class="est-period">1970–1979</td>
+              <td class="est-reason">Normalizace — návrat k tvrdé centrální regulaci. „Husákovo maso": levné potraviny jako nástroj sociálního klidu.</td>
+              <td class="est-official">~1–2 % ročně</td>
+              <td class="est-real">3–5 % ročně</td>
+              <td class="est-reason">Státní dotace udržovaly nízké ceny potravin a energií uměle. Skrytá inflace se projevovala zhoršováním kvality výrobků za stejnou cenu, nedostatkem spotřebního zboží a prodlužujícími se čekacími listinami (byty, auta).</td>
+            </tr>
+            <tr>
+              <td class="est-period">1980–1984</td>
+              <td class="est-reason">Světová recese, zpomalení růstu. Stagnace produktivity, rostoucí náklady vstupů (ropa z SSSR zdražuje).</td>
+              <td class="est-official">~2–3 % ročně</td>
+              <td class="est-real">4–6 % ročně</td>
+              <td class="est-reason">Nákladová inflace z importovaných vstupů byla přenášena do podnikové sféry, ale ne do spotřebitelských cen — rozdíl kryly státní dotace. IMF odhaduje skrytou inflaci na 2–3 % nad oficální čísla v tomto desetiletí.</td>
+            </tr>
+            <tr>
+              <td class="est-period">1985–1989</td>
+              <td class="est-reason">Pozdní socialismus, ekonomická stagnace, rostoucí nerovnováha. Čekací listiny na auta přes 10 let.</td>
+              <td class="est-official">~0–1 % ročně<br><span style="font-size:10px">(ofic. index)</span></td>
+              <td class="est-real">2–4 % ročně<br><span style="font-size:10px">+ potlačená inflace<br>pod 5 %</span></td>
+              <td class="est-reason">World Bank Working Paper (Drabek &amp; Brada, 1993): skrytá inflace 0,5–2 % ročně v spotřebitelských cenách, ~3 % v průmyslu; potlačená inflace pod 5 %. IMF (1992): průměrná zaznamenaná inflace 1,5 % ročně v 80. letech, odhad skryté složky 2–3 % ročně. Celkový reálný tlak tedy 3–5 % nad nulou.</td>
+            </tr>
+          </tbody>
+        </table>
+        </div>
+        <div class="est-disclaimer">
+          <strong>Metodická poznámka:</strong> Odhady reálné inflace jsou konstruovány na základě akademické literatury a nelze je považovat za přesná číselná data. Slouží k ilustraci řádové velikosti podhodnocení. Československo bylo — na rozdíl od Polska či Maďarska — relativně makroekonomicky konzervativní zemí, takže rozsah potlačené inflace byl menší. Největší jednorázové znehodnocení způsobila <strong>měnová reforma 1953</strong>, která nespadá do kategorie „inflace", ale de facto znamenala totální přecenění úspor.
+        </div>
+      </div>
+
+    </div><!-- /hist-cards -->
+
+  </div><!-- /panel-historicka -->
+
+
+  <!-- ═══ PANEL: INFLÁTOR / DEFLÁTOR ═══ -->
+  <div class="panel" id="panel-deflator">
+
+    <div class="defl-top">
+      <div class="defl-input-group">
+        <span class="defl-input-label">Bazický rok</span>
+        <input class="defl-input" type="number" id="deflBaseYear" value="2000" min="1990" max="2025" oninput="renderDeflator()" />
+      </div>
+      <div class="defl-desc">
+        Koeficient v každém řádku udává, <strong>čím musíte vynásobit částku z daného roku</strong>, aby byla srovnatelná s korunou v bazickém roce.
+        Koeficient &gt; 1 znamená, že koruny daného roku mají nižší kupní sílu než v bazickém roce (je třeba přidat). Koeficient &lt; 1 naopak.
+        <br>Příklady jsou počítány pro <strong>1 000 Kč</strong>.
+      </div>
+    </div>
+
+    <div class="defl-actions">
+      <button class="btn-download" onclick="downloadDeflatorCSV()">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M6.5 1v7M4 6l2.5 2.5L9 6M2 10h9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Stáhnout CSV (Excel)
+      </button>
+    </div>
+    <div class="defl-table-wrap">
+      <table class="defl-table">
+        <thead>
+          <tr>
+            <th>Rok</th>
+            <th>Roční inflace</th>
+            <th colspan="2">Koeficient (vůči baz. roku)</th>
+            <th>1 000 Kč tohoto roku =</th>
+          </tr>
+        </thead>
+        <tbody id="deflTableBody"></tbody>
+      </table>
+    </div>
+
+    <div class="defl-note">
+      <strong>Jak číst tabulku:</strong> Chceš-li vyjádřit cenu z roku 1995 v korunách roku 2000, vezmi původní částku a vynásob koeficientem v řádku 1995 (při bazickém roku 2000).
+      Výsledek vyjadřuje stejnou kupní sílu v cenách roku 2000. Datová základna: ČSÚ / OECD historické publikace (1990–1992), ČSÚ DataStat (1993–2025).
+    </div>
+
+  </div><!-- /panel-deflator -->
+
+  <footer>
+    <span>Zdroj: <a href="https://data.csu.gov.cz" target="_blank">data.csu.gov.cz</a> (ČSÚ DataStat API) · OECD / ČSÚ hist. publikace (1990–1992)</span>
+    <span id="lastUpdate"></span>
+  </footer>
+
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════
+// HISTORICKÁ DATA
+// 1990–1992: ČSÚ historické publikace / OECD (ČSFR, česká část)
+//   1990: cca 9,7 % — první rok cenové liberalizace
+//   1991: 56,6 % — skoková liberalizace cen v lednu 1991
+//   1992: 11,1 % — stabilizace po skoku
+// 1993–2024: ČSÚ, průměrná roční míra inflace (samostatná ČR)
+// ══════════════════════════════════════════════════════
+const RAW = {
+  1990:  9.7,
+  1991: 56.6,
+  1992: 11.1,
+  1993: 20.8,
+  1994: 10.0,
+  1995:  9.1,
+  1996:  8.8,
+  1997:  8.5,
+  1998: 10.7,
+  1999:  2.1,
+  2000:  3.9,
+  2001:  4.7,
+  2002:  1.8,
+  2003:  0.1,
+  2004:  2.8,
+  2005:  1.9,
+  2006:  2.5,
+  2007:  2.8,
+  2008:  6.3,
+  2009:  1.0,
+  2010:  1.5,
+  2011:  1.9,
+  2012:  3.3,
+  2013:  1.4,
+  2014:  0.4,
+  2015:  0.3,
+  2016:  0.7,
+  2017:  2.5,
+  2018:  2.1,
+  2019:  2.8,
+  2020:  3.2,
+  2021:  3.8,
+  2022: 15.1,
+  2023: 10.7,
+  2024:  2.4,
+  2025:  2.5,   // ČSÚ, zveřejněno 13. 1. 2026 (definitivní výsledek)
+};
+const EST = new Set([1990, 1991, 1992]);
+
+let ALL = [];
+let FILTERED = [];
+let chartR = null, chartK = null;
+
+async function init() {
+  const live = await fetchLive();
+  const merged = { ...RAW, ...live };
+  ALL = Object.entries(merged)
+    .map(([y, v]) => ({ year: +y, value: v }))
+    .sort((a, b) => a.year - b.year);
+
+  document.getElementById('lastUpdate').textContent =
+    `Data: ${ALL[0].year}–${ALL.at(-1).year} · ${new Date().toLocaleDateString('cs-CZ')}`;
+
+  fillStats();
+  setRange('all', document.getElementById('btn-all'));
+  renderKumuChart();
+  renderKumuTable(ALL[0].year);
+  renderDeflator();
+
+  const minY = ALL[0].year, maxY = ALL.at(-1).year;
+  const fY = document.getElementById('fromYear');
+  const tY = document.getElementById('toYear');
+  fY.min = minY; fY.max = maxY - 1;
+  tY.min = minY + 1; tY.max = maxY;
+  tY.value = maxY;
+}
+
+async function fetchLive() {
+  try {
+    const r = await fetch('https://data.csu.gov.cz/api/dotaz/v1/data/vybery/CRUHVD1T2?format=CSV',
+      { signal: AbortSignal.timeout(7000) });
+    if (!r.ok) throw 0;
+    const lines = (await r.text()).trim().split('\n');
+    const out = {};
+    for (let i = 1; i < lines.length; i++) {
+      const c = lines[i].split(/[,;]/);
+      const y = parseInt(c[0]?.replace(/"/g,''));
+      const v = parseFloat(c[1]?.replace(/"/g,'').replace(',','.'));
+      if (y > 1989 && y <= new Date().getFullYear() && !isNaN(v)) out[y] = v;
+    }
+    return out;
+  } catch { return {}; }
+}
+
+function fillStats() {
+  const maxI = ALL.reduce((a, b) => b.value > a.value ? b : a);
+  const minI = ALL.reduce((a, b) => b.value < a.value ? b : a);
+  const last = ALL.at(-1);
+
+  // Kumulovaná od 1990
+  let kFactor = 1;
+  for (let i = 1; i < ALL.length; i++) kFactor *= 1 + ALL[i].value / 100;
+  const kumuPct = ((kFactor - 1) * 100).toFixed(0);
+
+  const sc = (cid, vid, v, sid, s, cls) => {
+    document.getElementById(vid).textContent = v;
+    document.getElementById(sid).textContent = s;
+    if (cls) document.getElementById(vid).className = 'stat-value ' + cls;
+    document.getElementById(cid).classList.add('loaded');
+  };
+  sc('card-latest','val-latest', last.value.toFixed(1)+' %','sub-latest',`Rok ${last.year}`,
+     last.value > 5 ? 'negative' : last.value < 1 ? 'positive' : 'highlight');
+  sc('card-max','val-max', maxI.value.toFixed(1)+' %','sub-max',`Rok ${maxI.year}`, 'negative');
+  sc('card-min','val-min', minI.value.toFixed(1)+' %','sub-min',`Rok ${minI.year}`, 'positive');
+  sc('card-kumu','val-kumu', '+'+kumuPct+' %','sub-kumu', `${ALL[0].year}–${last.year}`, 'highlight');
+}
+
+function switchTab(name, btn) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('panel-'+name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'historicka') renderHistorickaChart();
+}
+
+function setRange(range, btn) {
+  document.querySelectorAll('.controls .btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const last = ALL.at(-1).year;
+  FILTERED = range === 'all' ? [...ALL] : ALL.filter(d => d.year >= last - range + 1);
+  renderRocniChart();
+  renderRocniTable();
+}
+
+function renderRocniChart() {
+  document.getElementById('loading1').style.display = 'none';
+  const cv = document.getElementById('chartRocni');
+  cv.style.display = 'block';
+
+  const labels = FILTERED.map(d => d.year.toString());
+  const vals = FILTERED.map(d => d.value);
+  const avg = vals.reduce((s, v) => s + v, 0) / vals.length;
+
+  const bg = FILTERED.map(d => {
+    const e = EST.has(d.year) ? 0.45 : 0.88;
+    if (d.value >= 15) return `rgba(232,84,71,${e})`;
+    if (d.value >= 10) return `rgba(232,140,71,${e})`;
+    if (d.value >= 5)  return `rgba(232,197,71,${e})`;
+    if (d.value <= 0.5) return `rgba(92,232,122,${e * 0.85})`;
+    return `rgba(232,197,71,${e * 0.55})`;
+  });
+
+  if (chartR) chartR.destroy();
+  chartR = new Chart(cv, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { data: vals, backgroundColor: bg, borderWidth: 0, borderRadius: 2, order: 2 },
+        {
+          data: vals.map(() => +avg.toFixed(2)),
+          type: 'line', borderColor: 'rgba(71,197,232,0.75)',
+          borderWidth: 1.5, borderDash: [4,3], pointRadius: 0,
+          fill: false, order: 1
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor:'#14171f', borderColor:'#252a3a', borderWidth:1,
+          titleColor:'#e8e4d8', bodyColor:'#7a8099',
+          titleFont:{family:'DM Mono',size:12}, bodyFont:{family:'DM Mono',size:11},
+          callbacks: {
+            title: c => EST.has(+c[0].label) ? c[0].label + ' *' : c[0].label,
+            label: c => c.datasetIndex===0
+              ? `  Inflace: ${c.parsed.y.toFixed(1)} %`
+              : `  Průměr: ${c.parsed.y.toFixed(1)} %`,
+            afterBody: c => EST.has(+c[0].label) ? ['  * Data ČSFR / hist. publikace ČSÚ'] : []
+          }
+        }
+      },
+      scales: {
+        x: { grid:{color:'rgba(37,42,58,0.5)'}, ticks:{color:'#7a8099',font:{family:'DM Mono',size:10},maxRotation:45}, border:{color:'rgba(37,42,58,0.8)'} },
+        y: { grid:{color:'rgba(37,42,58,0.5)'}, ticks:{color:'#7a8099',font:{family:'DM Mono',size:10},callback:v=>v+' %'}, border:{color:'rgba(37,42,58,0.8)'} }
+      }
+    }
+  });
+}
+
+function renderRocniTable() {
+  const maxV = Math.max(...FILTERED.map(d => d.value));
+  document.getElementById('tableBody').innerHTML = [...FILTERED].reverse().map((d, i, arr) => {
+    const prev = arr[i + 1];
+    const ch = prev ? d.value - prev.value : null;
+    const chStr = ch === null ? '—' : (ch > 0 ? '+' : '') + ch.toFixed(1) + ' p.b.';
+    const chCls = ch === null ? '' : ch > 0 ? 'val-up' : ch < 0 ? 'val-down' : '';
+    const pct = (d.value / maxV * 100).toFixed(1);
+    const col = d.value >= 15 ? '#e85447' : d.value >= 10 ? '#e88c47' : d.value >= 5 ? '#e8c547' : '#47c5e8';
+    return `<tr class="${d.value===maxV?'row-peak':''} ${EST.has(d.year)?'row-est':''}">
+      <td>${d.year}</td>
+      <td><strong>${d.value.toFixed(1)} %</strong></td>
+      <td class="${chCls}">${chStr}</td>
+      <td><div class="bar-cell"><div class="bar-bg"><div class="bar-fill" style="width:${pct}%;background:${col}"></div></div><span style="font-size:10px;color:var(--muted);min-width:32px">${d.value.toFixed(1)}</span></div></td>
+    </tr>`;
+  }).join('');
+}
+
+// ── KUMULOVANÁ INFLACE ──────────────────────────────
+function cumFrom(baseYear) {
+  const si = ALL.findIndex(d => d.year === baseYear);
+  if (si < 0) return [];
+  let f = 1;
+  return ALL.slice(si).map((d, i) => {
+    if (i > 0) f *= 1 + d.value / 100;
+    return { year: d.year, annual: d.value, pct: (f - 1) * 100, factor: f };
+  });
+}
+
+function renderKumuChart() {
+  const data = cumFrom(ALL[0].year);
+  if (chartK) chartK.destroy();
+  chartK = new Chart(document.getElementById('chartKumu'), {
+    type: 'line',
+    data: {
+      labels: data.map(d => d.year.toString()),
+      datasets: [{
+        data: data.map(d => +d.pct.toFixed(1)),
+        borderColor: 'rgba(232,197,71,0.9)',
+        backgroundColor: 'rgba(232,197,71,0.07)',
+        borderWidth: 2, pointRadius: 2.5,
+        pointBackgroundColor: 'rgba(232,197,71,0.9)',
+        fill: true, tension: 0.3
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor:'#14171f', borderColor:'#252a3a', borderWidth:1,
+          titleColor:'#e8e4d8', bodyColor:'#7a8099',
+          titleFont:{family:'DM Mono',size:11}, bodyFont:{family:'DM Mono',size:11},
+          callbacks: { label: c => `  Kumulace: +${c.parsed.y.toFixed(1)} %` }
+        }
+      },
+      scales: {
+        x: { grid:{color:'rgba(37,42,58,0.5)'}, ticks:{color:'#7a8099',font:{family:'DM Mono',size:9},maxRotation:45}, border:{color:'rgba(37,42,58,0.8)'} },
+        y: { grid:{color:'rgba(37,42,58,0.5)'}, ticks:{color:'#7a8099',font:{family:'DM Mono',size:9},callback:v=>'+'+v+' %'}, border:{color:'rgba(37,42,58,0.8)'} }
+      }
+    }
+  });
+}
+
+function renderKumuTable(baseYear) {
+  document.getElementById('kumuBaseLabel').textContent = baseYear;
+  document.querySelectorAll('.kbl').forEach(el => el.textContent = baseYear);
+  const data = cumFrom(baseYear);
+  document.getElementById('kumuTableBody').innerHTML = [...data].reverse().map(d => {
+    const col = d.pct > 300 ? 'var(--negative)' : d.pct > 100 ? 'var(--accent)' : 'var(--accent3)';
+    return `<tr>
+      <td>${d.year}</td>
+      <td>${d.annual.toFixed(1)} %</td>
+      <td style="color:${col};font-weight:500">+${d.pct.toFixed(1)} %</td>
+      <td>${(100 * d.factor).toFixed(2)} Kč</td>
+    </tr>`;
+  }).join('');
+}
+
+function calcKumu() {
+  const fromY = +document.getElementById('fromYear').value;
+  const toY   = +document.getElementById('toYear').value;
+  const errEl = document.getElementById('kumuErr');
+  const resEl = document.getElementById('kumuResult');
+  errEl.style.display = 'none'; resEl.style.display = 'none';
+
+  if (isNaN(fromY) || isNaN(toY)) { errEl.textContent = 'Zadej platné roky.'; errEl.style.display='block'; return; }
+  if (fromY >= toY) { errEl.textContent = 'Výchozí rok musí být menší než cílový.'; errEl.style.display='block'; return; }
+  if (!ALL.find(d=>d.year===fromY) || !ALL.find(d=>d.year===toY)) { errEl.textContent = 'Rok je mimo dostupný rozsah dat.'; errEl.style.display='block'; return; }
+
+  let f = 1;
+  for (const d of ALL) {
+    if (d.year > fromY && d.year <= toY) f *= 1 + d.value / 100;
+  }
+  const pct = (f - 1) * 100;
+  const yrs = toY - fromY;
+  const ann = (Math.pow(f, 1/yrs) - 1) * 100;
+
+  document.getElementById('kumuVal').textContent = '+' + pct.toFixed(1) + ' %';
+  document.getElementById('kumuDetail').innerHTML =
+    `Za <strong>${yrs} let</strong> (${fromY}–${toY})<br>` +
+    `100 Kč z roku ${fromY} odpovídá <strong>${(100*f).toFixed(2)} Kč</strong> v roce ${toY}<br>` +
+    `Průměrná roční inflace za období: <strong>${ann.toFixed(2)} %</strong>`;
+  resEl.style.display = 'block';
+
+  renderKumuTable(fromY);
+}
+
+
+// ── HISTORICKÁ KARTA ───────────────────────────────
+let chartHistoricka = null;
+
+function renderHistorickaChart() {
+  if (chartHistoricka) return; // render pouze jednou
+
+  const cv = document.getElementById('chartHistoricka');
+
+  // Roky 1948–1989: "šedá zóna" — null hodnoty pro data, ale popisky existují
+  const histLabels = [];
+  for (let y = 1948; y <= 1989; y++) histLabels.push(y.toString());
+  const modernLabels = ALL.map(d => d.year.toString());
+  const allLabels = [...histLabels, ...modernLabels];
+
+  // Dataset 1: šedá zóna (plné hodnoty pro vizuál — použijeme pevnou výšku)
+  const grayData = allLabels.map(l => +l <= 1989 ? null : null);
+  // Dataset 2: skutečná data od 1990
+  const realData = allLabels.map(l => {
+    const yr = +l;
+    const item = ALL.find(d => d.year === yr);
+    return item ? item.value : null;
+  });
+
+  // Barvy pro moderní data
+  const realColors = allLabels.map(l => {
+    const yr = +l;
+    const item = ALL.find(d => d.year === yr);
+    if (!item) return 'transparent';
+    const e = EST.has(yr) ? 0.45 : 0.88;
+    if (item.value >= 15) return `rgba(232,84,71,${e})`;
+    if (item.value >= 10) return `rgba(232,140,71,${e})`;
+    if (item.value >= 5)  return `rgba(232,197,71,${e})`;
+    if (item.value <= 0.5) return `rgba(92,232,122,${e*0.85})`;
+    return `rgba(232,197,71,${e*0.55})`;
+  });
+
+  // Fake dataset pro šedou zónu — použijeme anotaci přes plugin nebo jen barvu pozadí v grafu
+  // Jednodušší: přidáme "dummy" dataset s pevnou výškou 65 pro roky 1948–1989 ve velmi průhledné šedé
+  const grayBarData = allLabels.map(l => +l <= 1989 ? 65 : null);
+
+  chartHistoricka = new Chart(cv, {
+    type: 'bar',
+    data: {
+      labels: allLabels,
+      datasets: [
+        {
+          // Šedá zóna 1948–1989
+          label: '1948–1989 (data nedostupná)',
+          data: grayBarData,
+          backgroundColor: allLabels.map(l => +l <= 1989 ? 'rgba(122,128,153,0.13)' : 'transparent'),
+          borderColor: allLabels.map(l => +l <= 1989 ? 'rgba(122,128,153,0.25)' : 'transparent'),
+          borderWidth: 1,
+          borderRadius: 0,
+          order: 2,
+        },
+        {
+          // Skutečná data 1990–
+          label: 'Inflace (%)',
+          data: realData,
+          backgroundColor: realColors,
+          borderWidth: 0,
+          borderRadius: 2,
+          order: 1,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor:'#14171f', borderColor:'#252a3a', borderWidth:1,
+          titleColor:'#e8e4d8', bodyColor:'#7a8099',
+          titleFont:{family:'DM Mono',size:11}, bodyFont:{family:'DM Mono',size:11},
+          callbacks: {
+            label: ctx => {
+              if (ctx.datasetIndex === 0) {
+                return +ctx.label <= 1989
+                  ? '  Data za ČSSR nejsou srovnatelná s dnešní metodikou'
+                  : null;
+              }
+              if (ctx.parsed.y !== null) return `  Inflace: ${ctx.parsed.y.toFixed(1)} %`;
+              return null;
+            },
+            filter: item => {
+              // Nezobrazovat tooltip pro dataset 1 mimo šedou zónu
+              if (item.datasetIndex === 0 && +item.label > 1989) return false;
+              if (item.datasetIndex === 1 && item.parsed.y === null) return false;
+              return true;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(37,42,58,0.4)' },
+          ticks: {
+            color: ctx => +ctx.tick.label <= 1989 ? 'rgba(122,128,153,0.5)' : '#7a8099',
+            font: { family:'DM Mono', size: 9 },
+            maxRotation: 45,
+            callback: (val, idx, ticks) => {
+              const label = ticks[idx]?.label;
+              if (!label) return '';
+              const yr = +label;
+              // Zobraz pouze každý 5. rok v šedé zóně, každý rok od 1990 (ale jen dekády pro přehled)
+              if (yr <= 1989) return yr % 5 === 0 ? label : '';
+              return yr % 5 === 0 ? label : '';
+            }
+          },
+          border: { color: 'rgba(37,42,58,0.8)' }
+        },
+        y: {
+          grid: { color: 'rgba(37,42,58,0.4)' },
+          ticks: { color:'#7a8099', font:{family:'DM Mono',size:9}, callback: v => v+' %' },
+          border: { color: 'rgba(37,42,58,0.8)' }
+        }
+      }
+    }
+  });
+
+  // Přidej textový popisek šedé zóny — jako HTML overlay
+  const wrapper = cv.parentElement;
+  wrapper.style.position = 'relative';
+  const overlay = document.createElement('div');
+  overlay.style.cssText = `
+    position:absolute; top:40px; left:24px;
+    font-family:'DM Mono',monospace; font-size:9px;
+    letter-spacing:0.1em; text-transform:uppercase;
+    color:rgba(122,128,153,0.6); pointer-events:none;
+    writing-mode:horizontal-tb;
+  `;
+  overlay.textContent = '← 1948–1989  data nedostupná / nesrovnatelná →';
+  wrapper.appendChild(overlay);
+}
+
+
+
+
+// ── INFLÁTOR / DEFLÁTOR ─────────────────────────────────
+function renderDeflator() {
+  if (!ALL || ALL.length === 0) return;
+
+  const baseYearRaw = parseInt(document.getElementById('deflBaseYear').value, 10);
+  const minY = ALL[0].year, maxY = ALL.at(-1).year;
+  const baseYear = Math.max(minY, Math.min(maxY, isNaN(baseYearRaw) ? 2000 : baseYearRaw));
+
+  // Kumulativní cenová hladina od prvního roku (index)
+  // priceLevel[year] = absolutní cenová hladina, 1.0 = rok ALL[0].year
+  const priceLevel = {};
+  let cum = 1.0;
+  for (const d of ALL) {
+    if (d.year === ALL[0].year) { priceLevel[d.year] = 1.0; }
+    else { cum *= (1 + d.value / 100); priceLevel[d.year] = cum; }
+  }
+
+  const basePL = priceLevel[baseYear] || 1;
+
+  // koeficient(rok) = basePL / priceLevel[rok]
+  // = čím vynásobit částku z `rok`, aby byla v cenách baseYear
+  const maxCoeff = Math.max(...ALL.map(d => basePL / priceLevel[d.year]));
+
+  const tbody = document.getElementById('deflTableBody');
+  tbody.innerHTML = '';
+
+  for (const d of ALL) {
+    const coeff = basePL / priceLevel[d.year];
+    const equiv = (1000 * coeff).toFixed(0);
+    const isBase = d.year === baseYear;
+    const isEst = EST.has(d.year);
+
+    // Vizuální bar — relativní délka vůči maximálnímu koeficientu
+    const barPct = Math.min(100, (coeff / maxCoeff) * 100).toFixed(1);
+    const barClass = coeff > 1 ? 'over' : coeff < 1 ? 'under' : '';
+
+    const tr = document.createElement('tr');
+    if (isBase) tr.className = 'defl-base';
+
+    tr.innerHTML = `
+      <td class="defl-year">${d.year}${isEst ? ' *' : ''}</td>
+      <td class="defl-rate">${isBase ? '—' : (d.value > 0 ? '+' : '') + d.value.toFixed(1) + ' %'}</td>
+      <td class="defl-coeff">${isBase ? '<strong>1,0000</strong> (základ)' : coeff.toFixed(4).replace('.',',')}</td>
+      <td class="defl-bar-cell">
+        <div class="defl-bar-wrap">
+          <div class="defl-bar-bg"><div class="defl-bar-fill ${barClass}" style="width:${barPct}%"></div></div>
+        </div>
+      </td>
+      <td class="defl-example">${isBase ? '= 1 000 Kč (základ)' : '≈ <strong>' + parseInt(equiv).toLocaleString('cs-CZ') + ' Kč</strong> v cenách roku ' + baseYear}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+
+
+
+function downloadDeflatorCSV() {
+  const baseYear = parseInt(document.getElementById('deflBaseYear').value, 10) || 2000;
+
+  // Rebuild price levels (same logic as renderDeflator)
+  const priceLevel = {};
+  let cum = 1.0;
+  for (const d of ALL) {
+    priceLevel[d.year] = (d.year === ALL[0].year) ? 1.0 : (cum *= (1 + d.value / 100), cum);
+  }
+  const basePL = priceLevel[baseYear] || 1;
+
+  // BOM for Excel UTF-8 recognition
+  const BOM = '\uFEFF';
+  const sep = ';';
+  const header = [
+    'Rok',
+    'Rocni inflace (%)',
+    `Kumulovany cenovy index (baze: ${baseYear} = 1)`,
+    `Koeficient pro prevod do cen roku ${baseYear}`,
+    `Ekvivalent 1000 Kc v cenach roku ${baseYear}`
+  ].join(sep);
+
+  const rows = ALL.map(d => {
+    const coeff = basePL / priceLevel[d.year];
+    const equiv = Math.round(1000 * coeff);
+    const inflStr = d.year === baseYear ? '' : d.value.toFixed(1).replace('.', ',');
+    return [
+      d.year,
+      inflStr,
+      priceLevel[d.year].toFixed(6).replace('.', ','),
+      coeff.toFixed(6).replace('.', ','),
+      equiv
+    ].join(sep);
+  });
+
+  const csv = BOM + [header, ...rows].join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `inflator-deflator-baze${baseYear}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+init();
+</script>
+</body>
+</html>
